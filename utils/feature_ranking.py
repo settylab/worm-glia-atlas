@@ -336,10 +336,27 @@ def train_model(ad_data, class_label, use_layer, inverse_of_regularization=None,
 # function to compute performance a model given a combination of features
 def determine_combination(*args):
     '''
-        Function to be parallelized -- 
-        should return a single column dataframe of probability estimates for a class 
-        given some combination of features. Within each function call -- a certain 
-        combination of feature is tested (used for inference)
+        [Summary]
+            Parallelizable function to compute probability estimates for a specified class 
+            based on a specified combination of features.
+        [Parameters]
+            *args (tuple) : A tuple containing the following elements:
+                - current_features (list) : List of features included in the current combination.
+                - feature (str)           : The feature being evaluated in this function call in -- to be combined with the current feaute.
+                - input_data (DataFrame)  : Input data containing features -- feature matrix Cell X Genes.
+                - target_class (str)      : The target class to calculate the probability estimates for.
+                - model (object)          : The machine learning model used for prediction -- logistic regression model.
+        [Returns]
+            DataFrame: A single-column DataFrame containing probability estimates for the specified target class 
+            based on the given combination of features (combination of features = current_feature + feature ).
+        [Description]
+            This function is designed to be parallelized and is used to compute probability estimates 
+            for a specified class based on a combination of features. Within each function call, 
+            a specific combination of features is tested, and the probability estimates are returned.
+
+            It creates a custom model by zeroing out the coefficients of features not included in the current 
+            combination and then uses this model to predict probabilities. The resulting probability estimates 
+            are returned as a DataFrame.
     '''
     # Unpacking the inputs
     current_features, feature, input_data, target_class, model = args
@@ -371,8 +388,9 @@ def determine_combination(*args):
     if target_class == negative_class:
         return predictionScore_Negative
     
+    
 def initialize_selection(model, ad_data, target_class, \
-                         class_labels, cluster_labels, use_layer, ignore_features=None, n_jobs=16):
+                         class_labels, cluster_labels, use_layer, n_features=1, ignore_features=None, n_jobs=16):
     '''
         [Summary]
             Identifies a feature/gene that globally maximizes the probability estimate for a 
@@ -385,6 +403,7 @@ def initialize_selection(model, ad_data, target_class, \
             cluster_labels  : Name of the column in ad_data.obs for cluster labels.
             use_layer       : anndata.layers field denoting which values to use for feature matrix -- imputed data
             ignore_features : List of features to be ignored during ranking. Default is None.
+            n_features      : Number of features to select. Deagult is 1.
             n_jobs          : Number of parallel jobs for computation. Default is 16.
         [Return]
             Name of gene/feature with highest probability estimate for the target class.
@@ -394,7 +413,7 @@ def initialize_selection(model, ad_data, target_class, \
     input_data, output_label = whole
     
     feature_combo_AcrossAllCluster = {}
-    numfeatures_AcrossAllCluster = 1
+    numfeatures_AcrossAllCluster = n_features
     
     probEst = {}
     current_features = []
@@ -423,11 +442,11 @@ def initialize_selection(model, ad_data, target_class, \
         predictionScore = pd.concat(results, axis=1)
         predictionScore.loc[:, ['cluster', 'class_labels']] = ad_data.obs.loc[predictionScore.index, [cluster_labels, class_labels]].values
         
-        probEst[f'{elem + 1}feature_Model'] = predictionScore.loc[:, ~predictionScore.columns.isin(ignore_features + current_features)]
+        probEst[f'{elem + 1}_feature'] = predictionScore.loc[:, ~predictionScore.columns.isin(ignore_features + current_features)]
 
         select_feature = predictionScore.loc[predictionScore['class_labels'] == target_class, \
                                              ~predictionScore.columns.isin(ignore_features + ['cluster', 'class_labels'] + current_features)].mean().idxmax()
-        feature_combo_AcrossAllCluster[f'{elem + 1}feature_Model'] = current_features + [select_feature]
+        feature_combo_AcrossAllCluster[f'{elem + 1}_feature'] = current_features + [select_feature]
 
         if select_feature not in current_features:
             current_features.append(select_feature)
@@ -435,8 +454,8 @@ def initialize_selection(model, ad_data, target_class, \
     return feature_combo_AcrossAllCluster, probEst
 
 # feature ranking function
-def get_rankings(combinations, probEst, ad_data, target_class, n_features, model,
-                 class_labels, cluster_labels, use_layer, ignore_features=None, n_jobs=16):
+def get_rankings(combinations, probEst, ad_data, target_class, model,
+                 class_labels, cluster_labels, use_layer, n_features, ignore_features=None, n_jobs=16):
     '''
         [Summary]
             Ranks features by iteratively selecting features based on evaluation scores.
@@ -463,15 +482,15 @@ def get_rankings(combinations, probEst, ad_data, target_class, n_features, model
                 - n_features (int)                       : The number of features that was selected for the given target class.
     ''' 
     # starting feature -- selected from initialization step of the anlayses
-    starting_feature = combinations['1feature_Model'][0]
-    class_mask_target = probEst['1feature_Model']['class_labels'] == target_class
+    starting_feature = combinations['1_feature'][0]
+    class_mask_target = probEst['1_feature']['class_labels'] == target_class
     target_class_mask = ad_data.obs[class_labels] == target_class
-    improve_cluster = probEst['1feature_Model'].loc[class_mask_target & target_class_mask, :].groupby('cluster').mean()[starting_feature].idxmin()
+    improve_cluster = probEst['1_feature'].loc[class_mask_target & target_class_mask, :].groupby('cluster').mean()[starting_feature].idxmin()
     
     current_featureCombo = [starting_feature]
     lowestPerformance_Cluster = improve_cluster
     lowestPerformance_ClusterRecord = {starting_feature: improve_cluster}
-    predictionScore_Accum = {'1_feature': probEst['1feature_Model']}
+    predictionScore_Accum = {'1_feature': probEst['1_feature']}
     all_model_featureCombination = {'1_feature': [starting_feature]}
     
     # create the whole data, retrieve_IO_data() returns test, validation, test, whole data
@@ -532,7 +551,7 @@ def get_rankings(combinations, probEst, ad_data, target_class, n_features, model
     return all_model_featureCombination, predictionScore_Accum, lowestPerformance_ClusterRecord, target_class, n_features
     
 # function combining everything together
-def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_layer, n_features=10, **kwargs):
+def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_layer, n_features=10, ranking_method='method_1', **kwargs):
     '''
         [Summary]
             This function identifies markers for a specified target class based on the learned features of a provided logistic regression
@@ -546,7 +565,12 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
             cluster_labels (str) : Column name in `ad_data.obs` containing cluster labels.
             use_layer (str)      : Layer name or identifier used in the analysis.
             n_features (int)     : The number of features to be selected for the specified target class. Default is 10.
-
+            ranking_method (str) : The ranking method to use.
+                                       - `method_1` initially selects a feature that maximizes probability estimates
+                                          across clusters belonging to the `target_class` and subsequent selected features are selected to maximize
+                                          probability estimates on a cluster-by-cluster basis.
+                                       - `method_2` selects feature that maximizes probability estimates across clusters belonging to the 
+                                         `target_class`.
             **kwargs (dict) : Additional keyword arguments for feature selection (passed into `intialized_selection()` and `get_rankings()`).
                 - ignore_features (list or None, optional) : A list of feature names to be ignored during selection. Default is None.
                 - n_jobs (int)                             : The number of CPU cores to be used for parallel processing for computation. 
@@ -574,98 +598,72 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
                 'sequentially_added_features': records,
             }
     '''
-    # initialization step -- select genes/features that, globally, maximizes classification performance 
-    # the of target_class from non target_class
-    combinations, probEst = initialize_selection(
-        ad_data=ad_data,
-        model=deepcopy(model),
-        target_class=target_class, 
-        cluster_labels=cluster_labels,
-        class_labels=class_labels, 
-        use_layer=use_layer,
-        **kwargs
-    )
-    
-    # feature ranking step -- select genes/features in combination with current features that maximizes classification
-    # performance on clusters that the current combination poorly classifies as the target_class from non target_class
-    all_combos, pred_accum, records, target_class, n_features_used = get_rankings(
-        combinations=combinations, 
-        probEst=probEst, 
-        ad_data=ad_data, 
-        target_class=target_class, 
-        n_features=n_features,
-        use_layer=use_layer,
-        model=deepcopy(model),
-        class_labels=class_labels, 
-        cluster_labels=cluster_labels,
-        **kwargs
-    )
-    
-    # store results
-    ad_data.uns[f'{target_class}_marker_results'] = {
-        'target_class': target_class,
-        'initial_feature':all_combos['1_feature'],
-        f'top_{n_features}': all_combos[f'{n_features_used}_feature'],
-        'all_combinations': all_combos,
-        'all_combinations_probEst': pred_accum,
-        'sequentially_added_features': records,
-    }  
-    
-# function to compute performance a model given a combination of features
-def determine_combination(*args):
-    '''
-        [Summary]
-            Parallelizable function to compute probability estimates for a specified class 
-            based on a specified combination of features.
-        [Parameters]
-            *args (tuple) : A tuple containing the following elements:
-                - current_features (list) : List of features included in the current combination.
-                - feature (str)           : The feature being evaluated in this function call in -- to be combined with the current feaute.
-                - input_data (DataFrame)  : Input data containing features -- feature matrix Cell X Genes.
-                - target_class (str)      : The target class to calculate the probability estimates for.
-                - model (object)          : The machine learning model used for prediction -- logistic regression model.
-        [Returns]
-            DataFrame: A single-column DataFrame containing probability estimates for the specified target class 
-            based on the given combination of features (combination of features = current_feature + feature ).
-        [Description]
-            This function is designed to be parallelized and is used to compute probability estimates 
-            for a specified class based on a combination of features. Within each function call, 
-            a specific combination of features is tested, and the probability estimates are returned.
+    if ranking_method == 'method_1':
+        # initialization step -- select genes/features that, globally, maximizes classification performance 
+        # the of target_class from non target_class
+        combinations, probEst = initialize_selection(
+            ad_data=ad_data,
+            model=deepcopy(model),
+            target_class=target_class, 
+            cluster_labels=cluster_labels,
+            class_labels=class_labels, 
+            use_layer=use_layer,
+            **kwargs
+        )
 
-            It creates a custom model by zeroing out the coefficients of features not included in the current 
-            combination and then uses this model to predict probabilities. The resulting probability estimates 
-            are returned as a DataFrame.
-    '''
-    # Unpacking the inputs
-    current_features, feature, input_data, target_class, model = args
+        # feature ranking step -- select genes/features in combination with current features that maximizes classification
+        # performance on clusters that the current combination poorly classifies as the target_class from non target_class
+        all_combos, pred_accum, records, target_class, n_features_used = get_rankings(
+            combinations=combinations, 
+            probEst=probEst, 
+            ad_data=ad_data, 
+            target_class=target_class, 
+            n_features=n_features,
+            use_layer=use_layer,
+            model=deepcopy(model),
+            class_labels=class_labels, 
+            cluster_labels=cluster_labels,
+            **kwargs
+        )
+
+        # store results
+        ad_data.uns[f'{target_class}_marker_results'] = {
+            'target_class': target_class,
+            'initial_feature':all_combos['1_feature'],
+            f'top_{n_features}': all_combos[f'{n_features_used}_feature'],
+            'all_combinations': all_combos,
+            'all_combinations_probEst': pred_accum,
+            'sequentially_added_features': records,
+            'ranking_method':ranking_method
+        }
     
-    # positive and negative class
-    classes = dict(zip([0,1],model.classes_))
-    positive_class = classes[1]
-    negative_class = classes[0]
-    
-    # DataFrames to contain probability estimates -- to be returned by the end of this function call
-    predictionScore_Positive = pd.DataFrame(0.0, index=input_data.index, columns=[feature])
-    predictionScore_Negative = pd.DataFrame(0.0, index=input_data.index, columns=[feature])
-    
-    # These two lines are determining which features to zero out in the baseline
-    baselineFeatures_Ref = pd.DataFrame(model.coef_.ravel().copy(), index=input_data.columns, columns=['baseline_coeff'])
-    baselineFeatures_Ref.loc[~baselineFeatures_Ref.index.isin([feature] + current_features), :] = 0.0
-    
-    # Creation of the custom model
-    meta_model = deepcopy(model)
-    meta_model.coef_ = np.expand_dims(baselineFeatures_Ref['baseline_coeff'].values, axis=0)
-    
-    # Storing probability estimates in precreated DataFrames -- entire data is used 
-    predictionScore_Positive.loc[:, feature] = meta_model.predict_proba(input_data)[:, 1] # Probability estimate for positive class
-    predictionScore_Negative.loc[:, feature] = meta_model.predict_proba(input_data)[:, 0] # Probability estimate for negative class
-    
-    # return the scores depending on the target class
-    if target_class == positive_class:
-        return predictionScore_Positive
-    if target_class == negative_class:
-        return predictionScore_Negative
-    
+    # TO DO: implement a variation of the feature selection where we instead select features based on global performance
+    # instead of cluster by cluster
+    if ranking_method == 'method_2':
+        # feature ranking step -- selects genes that globaly maximizes the probability estimates across clusters belonging
+        # to target class
+        combinations, probEst = initialize_selection(
+            ad_data=ad_data,
+            model=deepcopy(model),
+            target_class=target_class, 
+            cluster_labels=cluster_labels,
+            class_labels=class_labels, 
+            n_features=n_features,
+            use_layer=use_layer,
+            **kwargs
+        )
+        
+        # store results
+        ad_data.uns[f'{target_class}_marker_results'] = {
+            'target_class': target_class,
+            'initial_feature':combinations['1_feature'],
+            f'top_{n_features}': combinations[f'{n_features}_feature'],
+            'all_combinations': combinations,
+            # 'all_combinations_probEst': pred_accum,  # these can be calculated by another function -- given the combinations
+            # 'sequentially_added_features': records,  # these is not needed
+            'ranking_method':ranking_method
+        }
+
 # function to compute the probability estimate for a class
 # if features=None use all the genes in the model to compute the probability estiamte
 # this function modifies the passed the anndata and adds probability estimate predictions in anndata.obsm attribute
