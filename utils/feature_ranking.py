@@ -1070,11 +1070,3 @@ def view_AUROCC_Summary(ad_data, model, target_class, class_labels,
                                          size=14), range=[0,1.1], showline=show_grid, gridcolor='lightgray')
     fig_strip.show()
     
-
-    
-    
-    
-    
-    
-    
-    
