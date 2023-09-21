@@ -16,8 +16,7 @@ conda env create -n "$envName" --file envs/environment.yaml
 
 conda activate "$envName"
 ```
-##### Option II: Create an environment and install the required packages using `pip`:<br>
-
+##### Option II: Create an environment and install the required packages using `pip`:
 ```
 envName=<your-environment-name>
 
