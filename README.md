@@ -42,7 +42,7 @@ Pairwise differential analysis performs pairwise differential analysis to identi
 
 #### <b>Inputs</b>
 The input is an `anndata` object with normalized, log-transformed data and an `obs` variable containing information about clusters for pairwise comparison.
-1. `anndata.obs[LEIDEN_NAME]`: The `.obs` field containing the groups to be used for the analysis
+1. `anndata.obs[LEIDEN_NAME]`: Where `LEIDEN_NAME` is the name of the column in `anndata.obs` field containing the groups to be used for the anlaysis (leiden clusters in this analysis).
 
 #### <b>Outputs</b>
 The `anndata` object is updated with the following information
