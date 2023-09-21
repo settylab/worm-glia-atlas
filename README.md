@@ -66,7 +66,6 @@ The key inputs for this analyses is the `anndata` object with normalized & log-t
 - `anndata.var[USE_GENES]`: Where `USE_GENES` is the name of the column in `anndata.var` containing boolean values that specifies whether a gene is to be used for analysis or ignored (default is `highly_variable` genes columns). 
 - `anndata.layers[USE_LAYER]`: Where `USE_LAYER` is a key in `anndata.layers` dictionary corresponding to the imputed Cell X Gene count matrix. If not specified, will use the normalized and log-transformed counts as values for the constructed feature matrix & feature ranking analysis.
 
-
 #### <b>Outputs</b>
 The output of the analysis is a trained logistic regression model and an updated anndata object as follows:
 
