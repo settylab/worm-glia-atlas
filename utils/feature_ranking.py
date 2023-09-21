@@ -879,7 +879,7 @@ def view_ProbEst_Summary(ad_data, model, feature_combos, target_class, save_plot
         width=1250,
         plot_bgcolor='rgba(0,0,0,0)',
         yaxis=dict(title='Average<br>Probability Estimates'),
-        xaxis=dict(title='Sequentially Selected Features<br>(Probability Estimates using 1-10 genes)'),
+        xaxis=dict(title='Sequentially Selected Features'),
         margin=dict(l=100, r=100, t=100, b=200), 
         title=dict(text=f'<b>{target_class}</b> Probability Estimates Per Cluster |'
         f' <b><i>{ad_data.obs.sex.unique().categories.values.item()}</i> Data</b>')
