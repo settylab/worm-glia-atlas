@@ -56,7 +56,7 @@ The tutorial notebooks for <b><i>Sheath/Socket</i> & <i>Pan-Glia</i> marker anal
 
 Subsequently, a ranking of the learned features within the model is then performed with the objective being to rank features that are highly informative and correlated with the specified target classes or cell type. 
 
-In the Sheath/Socket analysis, the model training and feature ranking are conducted on Male-only samples. For Pan-Glia analysis, the same procedures are applied to Hermaphrodite-only samples. These analyses can be readily extended to other datasets by providing the appropriate inputs, as outlined below.
+These analyses can be readily extended to other datasets by providing the appropriate inputs, as outlined below.
 
 #### <b>Inputs</b>
 The key inputs for this analyses is the `anndata` object with normalized & log-transformed counts, imputed gene expression values as well as the following anndata attribute fields below:
@@ -69,8 +69,6 @@ The key inputs for this analyses is the `anndata` object with normalized & log-t
 #### <b>Outputs</b>
 The output of the analysis is a trained logistic regression model and an updated anndata object as follows:
 
-- `anndata.obs['exclude_cells']`: A new column in the `anndata.obs` containing boolean values indicating whether specific cells were excluded during model training and feature/gene ranking analysis, especially if certain cell groups were designated for exclusion during the analyses.
-- `anndata.var['identified_genes']`: A new column in the `anndata.var` containing boolean values indicating which genes were retained for analysis after pre-filtering of genes based on gene expression.
 - `anndata.obs['data_splits']`: A new column in `anndata.obs` containing labels indicating whether each cell belongs to the training, validation, or test dataset after the feature matrix and target vector are split accordingly.
 - `anndata.uns['model_selection_metrics']`: A DataFrame object is stored in `anndata.uns`, containing mean accuracy scores of trained regularized models on the training, validation, and test datasets.
 - `anndata.uns['<target_class>_marker_results']`: A dictionary object is stored in `anndata.uns`, containing results of the feature ranking analysis specific to a designated target class.
