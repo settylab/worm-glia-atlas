@@ -46,54 +46,6 @@ from sklearn.feature_selection import RFE
 # copy models
 from copy import deepcopy
 
-
-def filter_features(ad_data, use_feature_set='highly_variable', frac_expr_thresh=0.45, cluster_expr_thresh=1, 
-                      cluster_label='Cluster_Celltype', ignore_clusters=None):
-    '''
-        [Summary]
-            Gene/feature pre-filtering function that identifies genes that will be used for gene selection
-            analyses. Modifies anndata objects inplace with labels for identified genes and indcluded/excluded 
-            clusters. Labels are added as new columns in anndata.var and anndata.obs respectively.
-        [Parameters]
-            ad_data              : an anndata object
-            use_feature_set      : the set of features to filter, checks adata.var (by default highly_variable)
-            fract_expr_thresh    : threshold for determining whether a gene is expressed in a cluster, default 0.45
-            cluster_expr_thresh  : threshold for determining whether a gene is expressed across cluster, default 1
-            cluster_label        : clusters/group label, checks adata.obs
-            ignore_clusters      : label/group in cluster_label to ignore when filtering genes, list of group label
-    '''
-    # check if the specified use_features_set column is in the dataset -- anndata.var
-    if use_feature_set not in ad_data.var.columns:
-        raise Exception(f'\'{feature_set}\' is not a valid anndata.var column in the provided anndata.')
-    
-    # check if cluster_label column is in the dataset -- anndata.obs
-    if cluster_label not in ad_data.obs.columns:
-        raise Exception(f'\'{cluster_label}\' is not a valid anndata.obs columns in the provided anndata.')
-    else:
-        # add labels denoting which cells/cell group to exclude
-        if ignore_clusters is not None:
-            ad_data.obs.loc[:,'exclude_cells'] = ad_data.obs[cluster_label].isin(ignore_clusters)
-        else:
-            # if ignore_cluster is not none
-            ad_data.obs.loc[:,'exclude_cells'] = ad_data.obs[cluster_label].isin([])
-        
-    # create meta_data with excluded cluster -- subset data that will be used for filtering/genes
-    meta_data = ad_data[~ad_data.obs[f'exclude_cells'],ad_data.var_names[ad_data.var[use_feature_set]]].copy()
-    
-    # quantify expression of gene for each cluster
-    fraction_hvg_exp = pd.DataFrame(0.0, index=meta_data.obs[cluster_label].unique().tolist(), columns=meta_data.var_names)
-    for gene in tqdm.tqdm(meta_data.var_names, total=len(meta_data.var_names), desc='Identifying genes'):
-        fraction_hvg_exp.loc[:,gene] = list(meta_data.obs[cluster_label][np.ravel(meta_data[:, gene].X.todense()) > 0]. \
-                                            value_counts() / meta_data.obs[cluster_label].value_counts())
-    
-    # actually performing the filtering
-    selected_features = fraction_hvg_exp.columns[(fraction_hvg_exp > frac_expr_thresh).sum() > cluster_expr_thresh]
-    print(f'Number of genes identified: {len(selected_features)}')
-    
-    # add labels in the ad_data.var of boolean values used 
-    ad_data.var.loc[:,'identified_genes'] = ad_data.var_names.isin(selected_features)
-    
-
 def split_data(ad_data, cluster_label):
     '''
         [Summary]
@@ -135,8 +87,8 @@ def split_data(ad_data, cluster_label):
     ad_data.obs.loc[:,'data_splits'] = pd.concat([train_idx, val_idx, test_idx]).loc[ad_data.obs_names,'data_label'].values.ravel()
     
     
-def retrieve_IO_data(ad_data, class_label, use_layer, data_splits_label='data_splits', 
-                     use_features='identified_genes', split=True):
+def retrieve_expression_data(ad_data, class_label, use_layer, use_features='identified_genes', 
+                             data_splits_label='data_splits', split=True):
     '''
         [Summary]
             A function to be called inside the training/model selection step. It 
@@ -205,8 +157,8 @@ def retrieve_IO_data(ad_data, class_label, use_layer, data_splits_label='data_sp
     else:
         return input_data, output_label   
     
-def train_model(ad_data, class_label, use_layer, inverse_of_regularization=None, \
-                solver='liblinear', regularization_type='l1', save_path=None, return_all=False):
+def train_model(ad_data, class_label, use_layer, use_features, inverse_of_regularization=None, \
+                solver='liblinear', regularization_type='l1', save_path=None, return_all=False,):
     '''
         [Summary]
             Trains a binary classifier model (logistic regression) to classify specified binary class
@@ -216,6 +168,7 @@ def train_model(ad_data, class_label, use_layer, inverse_of_regularization=None,
             class_label               : anndata.obs column name containing binary class labels
             use_layer                 : anndata.layers field denoting which values to use for feature matrix -- imputed data
                                         is reccomended
+            use_features
             inverse_of_regularization : a list of inverse of regularization params
             solver                    : solver used for training the binary classifier, see sklearn.linear_model.LogisticRegression
                                         documentation for details
@@ -235,7 +188,8 @@ def train_model(ad_data, class_label, use_layer, inverse_of_regularization=None,
         inverse_of_regularization = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
         
     # get data -- train, validation and test sets
-    train_data, validation_data, test_data, _ = retrieve_IO_data(ad_data, class_label, use_layer)
+    train_data, validation_data, test_data, _ = retrieve_expression_data(ad_data=ad_data, class_label=class_label, 
+                                                                         use_layer=use_layer, use_features=use_features)
     
     # prepare the input output
     X_train, y_train = train_data
@@ -388,7 +342,6 @@ def determine_combination(*args):
     if target_class == negative_class:
         return predictionScore_Negative
     
-    
 def initialize_selection(model, ad_data, target_class, \
                          class_labels, cluster_labels, use_layer, n_features=1, ignore_features=None, n_jobs=16):
     '''
@@ -409,7 +362,7 @@ def initialize_selection(model, ad_data, target_class, \
             Name of gene/feature with highest probability estimate for the target class.
     '''
     # create the whole data
-    train, validation, test, whole = retrieve_IO_data(ad_data, class_labels, use_layer) 
+    train, validation, test, whole = retrieve_expression_data(ad_data, class_labels, use_layer) 
     input_data, output_label = whole
     
     feature_combo_AcrossAllCluster = {}
@@ -493,9 +446,9 @@ def get_rankings(combinations, probEst, ad_data, target_class, model,
     predictionScore_Accum = {'1_feature': probEst['1_feature']}
     all_model_featureCombination = {'1_feature': [starting_feature]}
     
-    # create the whole data, retrieve_IO_data() returns test, validation, test, whole data
+    # create the whole data, retrieve_expression_data() returns test, validation, test, whole data
     # based on ad_data.obs['datasplits'] labels created from calling split_data()
-    train, validation, test, whole = retrieve_IO_data(ad_data, class_labels, use_layer) 
+    train, validation, test, whole = retrieve_expression_data(ad_data, class_labels, use_layer) 
     input_data, output_label = whole
     
     # data frame contaiing the model features
@@ -558,14 +511,14 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
             model. This function modifies the input Anndata object provided by adding the ranking results in `anndata.uns` as
             `anndata.uns['<target_class>_marker_results']`.
         [Parameters]
-            ad_data (AnnData)    : The input AnnData object containing the subset of data.
-            model (object)       : A machine learning model (scikit-learn classifier) used for feature ranking.
-            target_class (str)   : The target class for which markers need to be identified.
-            class_labels (str)   : Column name in `ad_data.obs` containing class labels.
-            cluster_labels (str) : Column name in `ad_data.obs` containing cluster labels.
-            use_layer (str)      : Layer name or identifier used in the analysis.
-            n_features (int)     : The number of features to be selected for the specified target class. Default is 10.
-            ranking_method (str) : The ranking method to use.
+            ad_data (AnnData)      : The input AnnData object containing the subset of data.
+            model (object)         : A machine learning model (scikit-learn classifier) used for feature ranking.
+            target_class (str)     : The target class for which markers need to be identified.
+            class_labels (str)     : Column name in `ad_data.obs` containing class labels.
+            cluster_labels (str)   : Column name in `ad_data.obs` containing cluster labels.
+            use_layer (str)        : Layer name or identifier used in the analysis.
+            n_features (int)       : The number of features to be selected for the specified target class. Default is 10.
+            ranking_method (str)   : The ranking method to use.
                                        - `method_1` initially selects a feature that maximizes probability estimates
                                           across clusters belonging to the `target_class` and subsequent selected features are selected to maximize
                                           probability estimates on a cluster-by-cluster basis.
@@ -598,6 +551,7 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
                 'sequentially_added_features': records,
             }
     '''
+    # ranking method_1
     if ranking_method == 'method_1':
         # initialization step -- select genes/features that, globally, maximizes classification performance 
         # the of target_class from non target_class
@@ -636,9 +590,9 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
             'sequentially_added_features': records,
             'ranking_method':ranking_method
         }
+        print(f'Results have been added to: anndata.uns[{target_class}_marker_results]')
     
-    # TO DO: implement a variation of the feature selection where we instead select features based on global performance
-    # instead of cluster by cluster
+    # ranking method_2
     if ranking_method == 'method_2':
         # feature ranking step -- selects genes that globaly maximizes the probability estimates across clusters belonging
         # to target class
@@ -663,6 +617,7 @@ def rank_genes(ad_data, model, target_class, class_labels, cluster_labels, use_l
             # 'sequentially_added_features': records,  # these is not needed
             'ranking_method':ranking_method
         }
+        print(f'Results have been added to: anndata.uns[\`{target_class}_marker_results\`]')
 
 # function to compute the probability estimate for a class
 # if features=None use all the genes in the model to compute the probability estiamte
@@ -701,7 +656,7 @@ def get_ProbabilityEstimates(ad_data, model, model_name, target_class,
     test_model = deepcopy(model)
 
     # create the input and output label from the anndata
-    data_input, data_output = retrieve_IO_data(ad_data, \
+    data_input, data_output = retrieve_expression_data(ad_data, \
                                                class_label=class_labels, use_layer=use_layer, split=False)
     
     # create a dataframe to store predictions
@@ -881,8 +836,7 @@ def view_ProbEst_Summary(ad_data, model, feature_combos, target_class, save_plot
         yaxis=dict(title='Average<br>Probability Estimates'),
         xaxis=dict(title='Sequentially Selected Features'),
         margin=dict(l=100, r=100, t=100, b=200), 
-        title=dict(text=f'<b>{target_class}</b> Probability Estimates Per Cluster |'
-        f' <b><i>{ad_data.obs.sex.unique().categories.values.item()}</i> Data</b>')
+        title=dict(text=f'<b>{target_class}</b> Probability Estimates Per Cluster')
     )
     
     fig_strip.update_traces(
@@ -894,8 +848,23 @@ def view_ProbEst_Summary(ad_data, model, feature_combos, target_class, save_plot
     fig_strip.update_yaxes(showgrid=show_grid, tickfont=dict(family='Rockwell', color='gray', \
                                          size=14), range=[0,1.1], showline=show_grid, gridcolor='lightgray')
     fig_strip.show()
+# --------------------------------------------------------------------------------------------------------------
+# TO DO: Implement a way to visualize confidences on individual cells on the umap
 
-    
+# TO DO: Function that calls probest on the model and add onto the anndata
+# should compute the baseline using all learned features in the passed in model as well as option
+# to compute -- should be able to speciy the target class
+def calculate_prediction(ad_data, model, target_class, use_layer, target_features=None):
+    pass
+
+# TO DO: Function to plot the umap and color by the confidences 
+# should plot the computed results -- should be a view_function `view_probabilities` -- should be able to specify the target class
+def view_UMAP_probability_estimates(ad_data, model, target_class, use_layer, target_features):
+    pass
+
+# --------------------------------------------------------------------------------------------------------------
+
+
 def get_AUROCC(ad_data, model, target_class, class_labels,
               cluster_labels, use_layer, target_features=None):
     '''
@@ -922,7 +891,7 @@ def get_AUROCC(ad_data, model, target_class, class_labels,
     '''
     
     # create the input and output data -- remember, excluded cells will not be included
-    data_input, data_output = retrieve_IO_data(ad_data, \
+    data_input, data_output = retrieve_expression_data(ad_data, \
                                               class_label=class_labels, use_layer=use_layer, split=False)
     
     # prep the data  
@@ -1057,8 +1026,7 @@ def view_AUROCC_Summary(ad_data, model, target_class, class_labels,
         yaxis=dict(title='AUROCC<br>Scores'),
         xaxis=dict(title=None),
         margin=dict(l=100, r=100, t=100, b=200),
-        title=dict(text=f'<b>{target_class}</b> AUROCC Scores Per Cluster |'
-        f' <b><i>{ad_data.obs.sex.unique().categories.values.item()}</i> Data</b>')
+        title=dict(text=f'<b>{target_class}</b> AUROCC Scores Per Cluster')
     )
     fig_strip.update_traces(
         marker=dict(opacity=0.6, size=10),
