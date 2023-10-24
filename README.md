@@ -52,7 +52,7 @@ The `anndata` object is updated with the following information
 
 ## Feature Ranking Analysis 
 ------------------------------------------
-The tutorial notebooks for <b><i>Sheath/Socket</i> & <i>Pan-Glia</i> marker analysis</b> is available <b>here</b>. A `logistic regression` model is trained and employed for `binary classification` of cells using gene expression. 
+The tutorial notebooks for <b><i>Sheath/Socket</i> marker analysis </b> is <b>[here](https://github.com/settylab/worm-glia-atlas/blob/main/notebooks/sheath-socket-analyses.ipynb)</b> & for <b><i>Pan-Glia</i> marker analysis</b> is available <b>[here](https://github.com/settylab/worm-glia-atlas/blob/main/notebooks/pan-glia-analyses.ipynb)</b>. A `logistic regression` model is trained and employed for `binary classification` of cells using gene expression. Sheath/Socket notebook describes identification of markers for both classes where Pan-glia notebook describes identification of markers only for the positive class. 
 
 Subsequently, a ranking of the learned features within the model is then performed with the objective being to rank features that are highly informative and correlated with the specified target classes or cell type. 
 
