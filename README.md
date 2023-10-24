@@ -69,11 +69,12 @@ The key inputs for this analyses is the `anndata` object with normalized & log-t
 #### <b>Outputs</b>
 The output of the analysis is a trained logistic regression model and an updated anndata object as follows:
 
-- `anndata.obs['data_splits']`: A new column in `anndata.obs` containing labels indicating whether each cell belongs to the training, validation, or test dataset after the feature matrix and target vector are split accordingly.
-- `anndata.uns['model_selection_metrics']`: A DataFrame object is stored in `anndata.uns`, containing mean accuracy scores of trained regularized models on the training, validation, and test datasets.
 - `anndata.uns['<target_class>_marker_results']`: A dictionary object is stored in `anndata.uns`, containing results of the feature ranking analysis specific to a designated target class.
 - `anndata.uns['<target_class>_probEst_Summary']`: A DataFrame object is stored in `anndata.uns`, containing the mean probability estimates for each cluster belonging to the specified target class.
 - `anndata.uns['<target_class>_AUROCC_Summary']`: A DataFrame object is stored in `anndata.uns`, containing summary information about the AUROCC (Area Under the Receiver Operating Characteristic Curve) scores for each cluster belonging to the specified target class.
+
+- `anndata.obs['data_splits']`: A new column in `anndata.obs` containing labels indicating whether each cell belongs to the training, validation, or test dataset after the feature matrix and target vector are split accordingly.
+- `anndata.uns['model_selection_metrics']`: A DataFrame object is stored in `anndata.uns`, containing mean accuracy scores of trained regularized models on the training, validation, and test datasets.
 
 ## Citations
 ------------------------------------------
