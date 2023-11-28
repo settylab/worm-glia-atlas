@@ -1,5 +1,5 @@
 # worm-glia-atlas
-This is a repository with tutorials and reproducibility notebooks for the worm glia scRNA-seq atlas available at https://wormglia.org.
+This is a repository with tutorials notebooks for the worm glia scRNA-seq atlas available at https://wormglia.org.
 
 ## Environment Setup
 ------------------------------------------
